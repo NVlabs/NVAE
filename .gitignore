@@ -1,0 +1,5 @@
+visualizations/
+.idea/
+.run/
+*.pyc
+*.pdf
