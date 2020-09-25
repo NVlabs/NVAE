@@ -255,7 +255,7 @@ Please cite our paper, if you happen to use this codebase:
 @inproceedings{vahdat2020NVAE,
   title={{NVAE}: A Deep Hierarchical Variational Autoencoder},
   author={Vahdat, Arash and Kautz, Jan},
- booktitle={Neural Information Processing Systems (NeurIPS)},
+  booktitle={Neural Information Processing Systems (NeurIPS)},
   year={2020}
 }
 ```
