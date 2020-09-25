@@ -1,4 +1,4 @@
-# The Official PyTorch Implementation of "NVAE: A Deep Hierarchical Variational Autoencoder" [(Paper)](https://arxiv.org/abs/2007.03898)
+# The Official PyTorch Implementation of "NVAE: A Deep Hierarchical Variational Autoencoder" [(NeurIPS 2020 Spotlight Paper)](https://arxiv.org/abs/2007.03898)
 
 <div align="center">
   <a href="http://latentspace.cc/arash_vahdat/" target="_blank">Arash&nbsp;Vahdat</a> &emsp; <b>&middot;</b> &emsp;
@@ -252,10 +252,10 @@ evaluation purposes only. For business inquiries, please contact
 Please cite our paper, if you happen to use this codebase:
 
 ```
-@article{vahdat2020NVAE,
+@inproceedings{vahdat2020NVAE,
   title={{NVAE}: A Deep Hierarchical Variational Autoencoder},
   author={Vahdat, Arash and Kautz, Jan},
-  journal={arXiv preprint arXiv:2007.03898},
+ booktitle={Neural Information Processing Systems (NeurIPS)},
   year={2020}
 }
 ```
