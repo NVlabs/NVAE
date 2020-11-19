@@ -97,7 +97,7 @@ normalizing flows are enabled. Check Table 6 in the paper for more information o
 details. Note that for the multinode training (more than 8-GPU experiments), we use the `mpirun` 
 command to run the training scripts on multiple nodes. Please adjust the commands below according to your setup. 
 Below `IP_ADDR` is the IP address of the machine that will host the process with rank 0 
-(see [here](https://pytorch.org/tutorials/intermediate/dist_tuto.html#initialization-methods). 
+(see [here](https://pytorch.org/tutorials/intermediate/dist_tuto.html#initialization-methods)). 
 `NODE_RANK` is the index of each node among all the nodes that are running the job.
 
 <details><summary>MNIST</summary>
@@ -232,7 +232,7 @@ the same time (with the batch size of 6). The smaller models obtain only 0.01 bp
 negative log-likelihood.
 </details>
 
-**If for any reason your training is stopped, use the exactly same commend with the addition of `--cont_training`
+**If for any reason your training is stopped, use the exact same commend with the addition of `--cont_training`
 to continue training from the last saved checkpoint. If you observe NaN, continuing the training using this flag
 usually will not fix the NaN issue.**
 
@@ -257,7 +257,7 @@ i) increase the spectral regularization coefficient, `--weight_decay_norm`. ii) 
 
 In some very rare cases, we observed that training freezes after 2-3 days of training. We believe the root cause
 of this is because of a racing condition that is happening in one of the low-level libraries. If for any reason the training 
-is stopped, kill your current run, and use the exactly same commend with the addition of `--cont_training`
+is stopped, kill your current run, and use the exact same commend with the addition of `--cont_training`
 to continue training from the last saved checkpoint.
 </details>
 
