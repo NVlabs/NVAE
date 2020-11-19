@@ -43,10 +43,25 @@ def main(eval_args):
     checkpoint = torch.load(eval_args.checkpoint, map_location='cpu')
     args = checkpoint['args']
 
+    if not hasattr(args, 'ada_groups'):
+        logging.info('old model, no ada groups was found.')
+        args.ada_groups = False
+
+    if not hasattr(args, 'min_groups_per_scale'):
+        logging.info('old model, no min_groups_per_scale was found.')
+        args.min_groups_per_scale = 1
+
+    if not hasattr(args, 'num_mixture_dec'):
+        logging.info('old model, no num_mixture_dec was found.')
+        args.num_mixture_dec = 10
+
     logging.info('loaded the model at epoch %d', checkpoint['epoch'])
     arch_instance = utils.get_arch_cells(args.arch_instance)
     model = AutoEncoder(args, None, arch_instance)
-    model.load_state_dict(checkpoint['state_dict'])
+    # Loading is not strict because of self.weight_normalized in Conv2D class in neural_operations. This variable
+    # is only used for computing the spectral normalization and it is safe not to load it. Some of our earlier models
+    # did not have this variable.
+    model.load_state_dict(checkpoint['state_dict'], strict=False)
     model = model.cuda()
 
     logging.info('args = %s', args)
@@ -78,7 +93,7 @@ def main(eval_args):
         with torch.no_grad():
             n = int(np.floor(np.sqrt(num_samples)))
             set_bn(model, bn_eval_mode, num_samples=36, t=eval_args.temp, iter=500)
-            for ind in range(5):     # sampling is repeated.
+            for ind in range(10):     # sampling is repeated.
                 torch.cuda.synchronize()
                 start = time()
                 with autocast():
