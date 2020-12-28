@@ -18,19 +18,31 @@ from model import AutoEncoder
 import utils
 import datasets
 from train import test, init_processes
+import os
 
-
-def set_bn(model, bn_eval_mode, num_samples=1, t=1.0, iter=100):
+def set_bn(model, bn_eval_mode, bn_stats_dir, num_samples=1, t=1.0, iter=100):
     if bn_eval_mode:
         model.eval()
     else:
-        model.train()
-        with autocast():
-            for i in range(iter):
-                if i % 10 == 0:
-                    print('setting BN statistics iter %d out of %d' % (i+1, iter))
-                model.sample(num_samples, t)
-        model.eval()
+        bn_stats_fname = os.path.join(bn_stats_dir, str(t)+".pt")
+        if not os.path.exists(bn_stats_fname):
+            model.train()
+            with autocast():
+                for i in range(iter):
+                    if i % 10 == 0:
+                        print('setting BN statistics iter %d out of %d' % (i+1, iter))
+                    model.sample(num_samples, t)
+            model.eval()
+            state_dict = model.state_dict()
+            stats_state_dict = {}
+            for key in state_dict:
+                if "running_mean" in key or "running_var" in key:
+                    stats_state_dict[key] = state_dict[key]
+            torch.save(stats_state_dict, bn_stats_fname)
+        else:
+            stats_state_dict = torch.load(bn_stats_fname)
+            model.load_state_dict(stats_state_dict, strict = False)             
+            model.eval()
 
 
 def main(eval_args):
@@ -90,9 +102,11 @@ def main(eval_args):
     else:
         bn_eval_mode = not eval_args.readjust_bn
         num_samples = 16
+        if not os.path.exists(eval_args.bn_stats_dir):
+            os.makedirs(eval_args.bn_stats_dir)
         with torch.no_grad():
             n = int(np.floor(np.sqrt(num_samples)))
-            set_bn(model, bn_eval_mode, num_samples=36, t=eval_args.temp, iter=500)
+            set_bn(model, bn_eval_mode, eval_args.bn_stats_dir, num_samples=36, t=eval_args.temp, iter=500)
             for ind in range(10):     # sampling is repeated.
                 torch.cuda.synchronize()
                 start = time()
@@ -126,6 +140,8 @@ if __name__ == '__main__':
                         help='Settings this to true will evaluate the model on training data.')
     parser.add_argument('--data', type=str, default='/tmp/data',
                         help='location of the data corpus')
+    parser.add_argument('--bn_stats_dir', type=str, default='./bn_stats',
+                        help='location of the batch normalization statistics over generated images')
     parser.add_argument('--readjust_bn', action='store_true', default=False,
                         help='adding this flag will enable readjusting BN statistics.')
     parser.add_argument('--temp', type=float, default=0.7,
