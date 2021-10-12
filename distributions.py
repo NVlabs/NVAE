@@ -14,7 +14,7 @@ from utils import one_hot
 
 @torch.jit.script
 def soft_clamp5(x: torch.Tensor):
-    return x.div_(5.).tanh_().mul(5.)    #  5. * torch.tanh(x / 5.) <--> soft differentiable clamp between [-5, 5]
+    return x.div(5.).tanh_().mul(5.)    #  5. * torch.tanh(x / 5.) <--> soft differentiable clamp between [-5, 5]
 
 
 @torch.jit.script
@@ -48,6 +48,28 @@ class Normal:
         term2 = self.sigma / normal_dist.sigma
 
         return 0.5 * (term1 * term1 + term2 * term2) - 0.5 - torch.log(term2)
+
+
+class NormalDecoder:
+    def __init__(self, param, num_bits=8):
+        B, C, H, W = param.size()
+        self.num_c = C // 2
+        mu = param[:, :self.num_c, :, :]                                 # B, 3, H, W
+        log_sigma = param[:, self.num_c:, :, :]                          # B, 3, H, W
+        self.dist = Normal(mu, log_sigma)
+
+    def log_prob(self, samples):
+        assert torch.max(samples) <= 1.0 and torch.min(samples) >= 0.0
+        # convert samples to be in [-1, 1]
+        samples = 2 * samples - 1.0
+
+        return self.dist.log_p(samples)
+
+    def sample(self, t=1.):
+        x, _ = self.dist.sample()
+        x = torch.clamp(x, -1, 1.)
+        x = x / 2. + 0.5
+        return x
 
 
 class DiscLogistic:
@@ -166,6 +188,28 @@ class DiscMixLogistic:
         u = torch.Tensor(means.size()).uniform_(1e-5, 1. - 1e-5).cuda()                        # B, 3, H, W
         x = means + torch.exp(log_scales) / t * (torch.log(u) - torch.log(1. - u))             # B, 3, H, W
 
+        x0 = torch.clamp(x[:, 0, :, :], -1, 1.)                                                # B, H, W
+        x1 = torch.clamp(x[:, 1, :, :] + coeffs[:, 0, :, :] * x0, -1, 1)                       # B, H, W
+        x2 = torch.clamp(x[:, 2, :, :] + coeffs[:, 1, :, :] * x0 + coeffs[:, 2, :, :] * x1, -1, 1)  # B, H, W
+
+        x0 = x0.unsqueeze(1)
+        x1 = x1.unsqueeze(1)
+        x2 = x2.unsqueeze(1)
+
+        x = torch.cat([x0, x1, x2], 1)
+        x = x / 2. + 0.5
+        return x
+
+    def mean(self):
+        sel = torch.softmax(self.logit_probs, dim=1)                                           # B, M, H, W
+        sel = sel.unsqueeze(1)                                                                 # B, 1, M, H, W
+
+        # select logistic parameters
+        means = torch.sum(self.means * sel, dim=2)                                             # B, 3, H, W
+        coeffs = torch.sum(self.coeffs * sel, dim=2)                                           # B, 3, H, W
+
+        # we don't sample from logistic components, because of the linear dependencies, we use mean
+        x = means                                                                              # B, 3, H, W
         x0 = torch.clamp(x[:, 0, :, :], -1, 1.)                                                # B, H, W
         x1 = torch.clamp(x[:, 1, :, :] + coeffs[:, 0, :, :] * x0, -1, 1)                       # B, H, W
         x2 = torch.clamp(x[:, 2, :, :] + coeffs[:, 1, :, :] * x0 + coeffs[:, 2, :, :] * x1, -1, 1)  # B, H, W

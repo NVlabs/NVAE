@@ -17,7 +17,7 @@ from neural_ar_operations import ELUConv as ARELUConv
 from torch.distributions.bernoulli import Bernoulli
 
 from utils import get_stride_for_cell_type, get_input_size, groups_per_scale
-from distributions import Normal, DiscMixLogistic
+from distributions import Normal, DiscMixLogistic, NormalDecoder
 from thirdparty.inplaced_sync_batchnorm import SyncBatchNormSwish
 
 CHANNEL_MULT = 2
@@ -107,7 +107,7 @@ class AutoEncoder(nn.Module):
         self.writer = writer
         self.arch_instance = arch_instance
         self.dataset = args.dataset
-        self.crop_output = self.dataset == 'mnist'
+        self.crop_output = self.dataset in {'mnist', 'omniglot', 'stacked_mnist'}
         self.use_se = args.use_se
         self.res_dist = args.res_dist
         self.num_bits = args.num_x_bits
@@ -137,7 +137,7 @@ class AutoEncoder(nn.Module):
         self.input_size = get_input_size(self.dataset)
 
         # decoder param
-        self.num_mix_output = 10
+        self.num_mix_output = args.num_mixture_dec
 
         # used for generative purpose
         c_scaling = CHANNEL_MULT ** (self.num_preprocess_blocks + self.num_latent_scales - 1)
@@ -194,7 +194,7 @@ class AutoEncoder(nn.Module):
 
     def init_stem(self):
         Cout = self.num_channels_enc
-        Cin = 1 if self.dataset == 'mnist' else 3
+        Cin = 1 if self.dataset in {'mnist', 'omniglot'} else 3
         stem = Conv2D(Cin, Cout, 3, padding=1, bias=True)
         return stem
 
@@ -326,7 +326,13 @@ class AutoEncoder(nn.Module):
 
     def init_image_conditional(self, mult):
         C_in = int(self.num_channels_dec * mult)
-        C_out = 1 if self.dataset == 'mnist' else 10 * self.num_mix_output
+        if self.dataset in {'mnist', 'omniglot'}:
+            C_out = 1
+        else:
+            if self.num_mix_output == 1:
+                C_out = 2 * 3
+            else:
+                C_out = 10 * self.num_mix_output
         return nn.Sequential(nn.ELU(),
                              Conv2D(C_in, C_out, 3, padding=1, bias=True))
 
@@ -477,11 +483,14 @@ class AutoEncoder(nn.Module):
         return logits
 
     def decoder_output(self, logits):
-        if self.dataset == 'mnist':
+        if self.dataset in {'mnist', 'omniglot'}:
             return Bernoulli(logits=logits)
-        elif self.dataset in {'cifar10', 'celeba_64', 'celeba_256', 'imagenet_32', 'imagenet_64', 'ffhq',
-                              'lsun_bedroom_128', 'lsun_bedroom_256'}:
-            return DiscMixLogistic(logits, self.num_mix_output, num_bits=self.num_bits)
+        elif self.dataset in {'stacked_mnist', 'cifar10', 'celeba_64', 'celeba_256', 'imagenet_32', 'imagenet_64', 'ffhq',
+                              'lsun_bedroom_128', 'lsun_bedroom_256', 'lsun_church_64', 'lsun_church_128'}:
+            if self.num_mix_output == 1:
+                return NormalDecoder(logits, num_bits=self.num_bits)
+            else:
+                return DiscMixLogistic(logits, self.num_mix_output, num_bits=self.num_bits)
         else:
             raise NotImplementedError
 

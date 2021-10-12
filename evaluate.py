@@ -8,6 +8,7 @@
 import argparse
 import torch
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 from time import time
 
@@ -17,7 +18,7 @@ from torch.cuda.amp import autocast
 from model import AutoEncoder
 import utils
 import datasets
-from train import test, init_processes
+from train import test, init_processes, test_vae_fid
 
 
 def set_bn(model, bn_eval_mode, num_samples=1, t=1.0, iter=100):
@@ -55,6 +56,9 @@ def main(eval_args):
         logging.info('old model, no num_mixture_dec was found.')
         args.num_mixture_dec = 10
 
+    if eval_args.batch_size > 0:
+        args.batch_size = eval_args.batch_size
+
     logging.info('loaded the model at epoch %d', checkpoint['epoch'])
     arch_instance = utils.get_arch_cells(args.arch_instance)
     model = AutoEncoder(args, None, arch_instance)
@@ -86,14 +90,23 @@ def main(eval_args):
         logging.info('final valid neg log p %f', valid_neg_log_p)
         logging.info('final valid nelbo in bpd %f', valid_nelbo * bpd_coeff)
         logging.info('final valid neg log p in bpd %f', valid_neg_log_p * bpd_coeff)
-
+    elif eval_args.eval_mode == 'evaluate_fid':
+        bn_eval_mode = not eval_args.readjust_bn
+        set_bn(model, bn_eval_mode, num_samples=2, t=eval_args.temp, iter=500)
+        args.fid_dir = eval_args.fid_dir
+        args.num_process_per_node, args.num_proc_node = eval_args.world_size, 1   # evaluate only one 1 node
+        fid = test_vae_fid(model, args, total_fid_samples=50000)
+        logging.info('fid is %f' % fid)
     else:
         bn_eval_mode = not eval_args.readjust_bn
-        num_samples = 16
+        total_samples = 50000 // eval_args.world_size          # num images per gpu
+        num_samples = 100                                      # sampling batch size
+        num_iter = int(np.ceil(total_samples / num_samples))   # num iterations per gpu
+
         with torch.no_grad():
             n = int(np.floor(np.sqrt(num_samples)))
-            set_bn(model, bn_eval_mode, num_samples=36, t=eval_args.temp, iter=500)
-            for ind in range(10):     # sampling is repeated.
+            set_bn(model, bn_eval_mode, num_samples=16, t=eval_args.temp, iter=500)
+            for ind in range(num_iter):     # sampling is repeated.
                 torch.cuda.synchronize()
                 start = time()
                 with autocast():
@@ -103,14 +116,20 @@ def main(eval_args):
                     else output.sample()
                 torch.cuda.synchronize()
                 end = time()
-
-                output_tiled = utils.tile_image(output_img, n).cpu().numpy().transpose(1, 2, 0)
                 logging.info('sampling time per batch: %0.3f sec', (end - start))
-                output_tiled = np.asarray(output_tiled * 255, dtype=np.uint8)
-                output_tiled = np.squeeze(output_tiled)
 
-                plt.imshow(output_tiled)
-                plt.show()
+                visualize = False
+                if visualize:
+                    output_tiled = utils.tile_image(output_img, n).cpu().numpy().transpose(1, 2, 0)
+                    output_tiled = np.asarray(output_tiled * 255, dtype=np.uint8)
+                    output_tiled = np.squeeze(output_tiled)
+
+                    plt.imshow(output_tiled)
+                    plt.show()
+                else:
+                    file_path = os.path.join(eval_args.save, 'gpu_%d_samples_%d.npz' % (eval_args.local_rank, ind))
+                    np.savez_compressed(file_path, samples=output_img.cpu().numpy())
+                    logging.info('Saved at: {}'.format(file_path))
 
 
 if __name__ == '__main__':
@@ -120,7 +139,7 @@ if __name__ == '__main__':
                         help='location of the checkpoint')
     parser.add_argument('--save', type=str, default='/tmp/expr',
                         help='location of the checkpoint')
-    parser.add_argument('--eval_mode', type=str, default='sample', choices=['sample', 'evaluate'],
+    parser.add_argument('--eval_mode', type=str, default='sample', choices=['sample', 'evaluate', 'evaluate_fid'],
                         help='evaluation mode. you can choose between sample or evaluate.')
     parser.add_argument('--eval_on_train', action='store_true', default=False,
                         help='Settings this to true will evaluate the model on training data.')
@@ -132,6 +151,10 @@ if __name__ == '__main__':
                         help='The temperature used for sampling.')
     parser.add_argument('--num_iw_samples', type=int, default=1000,
                         help='The number of IW samples used in test_ll mode.')
+    parser.add_argument('--fid_dir', type=str, default='/tmp/fid-stats',
+                        help='path to directory where fid related files are stored')
+    parser.add_argument('--batch_size', type=int, default=0,
+                        help='Batch size used during evaluation. If set to zero, training batch size is used.')
     # DDP.
     parser.add_argument('--local_rank', type=int, default=0,
                         help='rank of process')

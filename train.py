@@ -20,6 +20,9 @@ from thirdparty.adamax import Adamax
 import utils
 import datasets
 
+from fid.fid_score import compute_statistics_of_generator, load_statistics, calculate_frechet_distance
+from fid.inception import InceptionV3
+
 
 def main(args):
     # ensures that weight initializations are all the same
@@ -272,6 +275,46 @@ def test(valid_queue, model, num_samples, args, logging):
     return neg_log_p_avg.avg, nelbo_avg.avg
 
 
+def create_generator_vae(model, batch_size, num_total_samples):
+    num_iters = int(np.ceil(num_total_samples / batch_size))
+    for i in range(num_iters):
+        with torch.no_grad():
+            logits = model.sample(batch_size, 1.0)
+            output = model.decoder_output(logits)
+            output_img = output.mean if isinstance(output, torch.distributions.bernoulli.Bernoulli) else output.mean()
+        yield output_img.float()
+
+
+def test_vae_fid(model, args, total_fid_samples):
+    dims = 2048
+    device = 'cuda'
+    num_gpus = args.num_process_per_node * args.num_proc_node
+    num_sample_per_gpu = int(np.ceil(total_fid_samples / num_gpus))
+
+    g = create_generator_vae(model, args.batch_size, num_sample_per_gpu)
+    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
+    model = InceptionV3([block_idx], model_dir=args.fid_dir).to(device)
+    m, s = compute_statistics_of_generator(g, model, args.batch_size, dims, device, max_samples=num_sample_per_gpu)
+
+    # share m and s
+    m = torch.from_numpy(m).cuda()
+    s = torch.from_numpy(s).cuda()
+    # take average across gpus
+    utils.average_tensor(m, args.distributed)
+    utils.average_tensor(s, args.distributed)
+
+    # convert m, s
+    m = m.cpu().numpy()
+    s = s.cpu().numpy()
+
+    # load precomputed m, s
+    path = os.path.join(args.fid_dir, args.dataset + '.npz')
+    m0, s0 = load_statistics(path)
+
+    fid = calculate_frechet_distance(m0, s0, m, s)
+    return fid
+
+
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
@@ -295,8 +338,9 @@ if __name__ == '__main__':
                         help='id used for storing intermediate results')
     # data
     parser.add_argument('--dataset', type=str, default='mnist',
-                        choices=['cifar10', 'mnist', 'celeba_64', 'celeba_256',
-                                 'imagenet_32', 'ffhq', 'lsun_bedroom_128'],
+                        choices=['cifar10', 'mnist', 'omniglot', 'celeba_64', 'celeba_256',
+                                 'imagenet_32', 'ffhq', 'lsun_bedroom_128', 'stacked_mnist',
+                                 'lsun_church_128', 'lsun_church_64'],
                         help='which dataset to use')
     parser.add_argument('--data', type=str, default='/tmp/nasvae/data',
                         help='location of the data corpus')
@@ -365,6 +409,8 @@ if __name__ == '__main__':
                         help='number of cells per block')
     parser.add_argument('--num_cell_per_cond_dec', type=int, default=1,
                         help='number of cell for each conditional in decoder')
+    parser.add_argument('--num_mixture_dec', type=int, default=10,
+                        help='number of mixture components in decoder. set to 1 for Normal decoder.')
     # NAS
     parser.add_argument('--use_se', action='store_true', default=False,
                         help='This flag enables squeeze and excitation.')

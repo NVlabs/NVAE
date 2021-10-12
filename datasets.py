@@ -7,13 +7,55 @@
 
 """Code for getting the data loaders."""
 
+import numpy as np
+from PIL import Image
 import torch
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
+from torch.utils.data import Dataset
+from scipy.io import loadmat
 import os
-import utils
+import urllib
 from lmdb_datasets import LMDBDataset
 from thirdparty.lsun import LSUN
+
+
+class StackedMNIST(dset.MNIST):
+    def __init__(self, root, train=True, transform=None, target_transform=None,
+                 download=False):
+        super(StackedMNIST, self).__init__(root=root, train=train, transform=transform,
+                                           target_transform=target_transform, download=download)
+
+        index1 = np.hstack([np.random.permutation(len(self.data)), np.random.permutation(len(self.data))])
+        index2 = np.hstack([np.random.permutation(len(self.data)), np.random.permutation(len(self.data))])
+        index3 = np.hstack([np.random.permutation(len(self.data)), np.random.permutation(len(self.data))])
+        self.num_images = 2 * len(self.data)
+
+        self.index = []
+        for i in range(self.num_images):
+            self.index.append((index1[i], index2[i], index3[i]))
+
+    def __len__(self):
+        return self.num_images
+
+    def __getitem__(self, index):
+        img = np.zeros((28, 28, 3), dtype=np.uint8)
+        target = 0
+        for i in range(3):
+            img_, target_ = self.data[self.index[index][i]], int(self.targets[self.index[index][i]])
+            img[:, :, i] = img_
+            target += target_ * 10 ** (2 - i)
+
+        img = Image.fromarray(img, mode="RGB")
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
 
 
 class Binarize(object):
@@ -42,6 +84,47 @@ def get_loaders(args):
     """Get data loaders for required dataset."""
     return get_loaders_eval(args.dataset, args)
 
+def download_omniglot(data_dir):
+    filename = 'chardata.mat'
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir)
+    url = 'https://raw.github.com/yburda/iwae/master/datasets/OMNIGLOT/chardata.mat'
+
+    filepath = os.path.join(data_dir, filename)
+    if not os.path.exists(filepath):
+        filepath, _ = urllib.request.urlretrieve(url, filepath)
+        print('Downloaded', filename)
+
+    return
+
+
+def load_omniglot(data_dir):
+    download_omniglot(data_dir)
+
+    data_path = os.path.join(data_dir, 'chardata.mat')
+
+    omni = loadmat(data_path)
+    train_data = 255 * omni['data'].astype('float32').reshape((28, 28, -1)).transpose((2, 1, 0))
+    test_data = 255 * omni['testdata'].astype('float32').reshape((28, 28, -1)).transpose((2, 1, 0))
+
+    train_data = train_data.astype('uint8')
+    test_data = test_data.astype('uint8')
+
+    return train_data, test_data
+
+
+class OMNIGLOT(Dataset):
+    def __init__(self, data, transform):
+        self.data = data
+        self.transform = transform
+
+    def __getitem__(self, index):
+        d = self.data[index]
+        img = Image.fromarray(d)
+        return self.transform(img), 0     # return zero as label.
+
+    def __len__(self):
+        return len(self.data)
 
 def get_loaders_eval(dataset, args):
     """Get train and valid loaders for cifar10/tiny imagenet."""
@@ -60,6 +143,20 @@ def get_loaders_eval(dataset, args):
             root=args.data, train=True, download=True, transform=train_transform)
         valid_data = dset.MNIST(
             root=args.data, train=False, download=True, transform=valid_transform)
+    elif dataset == 'stacked_mnist':
+        num_classes = 1000
+        train_transform, valid_transform = _data_transforms_stacked_mnist(args)
+        train_data = StackedMNIST(
+            root=args.data, train=True, download=True, transform=train_transform)
+        valid_data = StackedMNIST(
+            root=args.data, train=False, download=True, transform=valid_transform)
+    elif dataset == 'omniglot':
+        num_classes = 0
+        download_omniglot(args.data)
+        train_transform, valid_transform = _data_transforms_mnist(args)
+        train_data, valid_data = load_omniglot(args.data)
+        train_data = OMNIGLOT(train_data, train_transform)
+        valid_data = OMNIGLOT(valid_data, valid_transform)
     elif dataset.startswith('celeba'):
         if dataset == 'celeba_64':
             resize = 64
@@ -157,6 +254,21 @@ def _data_transforms_mnist(args):
         transforms.Pad(padding=2),
         transforms.ToTensor(),
         Binarize(),
+    ])
+
+    return train_transform, valid_transform
+
+
+def _data_transforms_stacked_mnist(args):
+    """Get data transforms for cifar10."""
+    train_transform = transforms.Compose([
+        transforms.Pad(padding=2),
+        transforms.ToTensor()
+    ])
+
+    valid_transform = transforms.Compose([
+        transforms.Pad(padding=2),
+        transforms.ToTensor()
     ])
 
     return train_transform, valid_transform

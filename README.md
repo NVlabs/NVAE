@@ -89,6 +89,14 @@ python create_ffhq_lmdb.py --ffhq_img_path=$DATA_DIR/ffhq/images1024x1024/ --ffh
 ```
 </details>
 
+<details><summary>LSUN</summary>
+
+We use LSUN datasets in our follow-up works. Visit [LSUN](https://www.yf.io/p/lsun) for 
+instructions on how to download this dataset. Since the LSUN scene datasets come in the
+LMDB format, they are ready to be loaded using torchvision data loaders.
+
+</details>
+
 
 ## Running the main NVAE training and evaluation scripts
 We use the following commands on each dataset for training NVAEs on each dataset for 
@@ -275,7 +283,7 @@ Above, `$CHECKPOINT_DIR` and `$EXPR_ID` are the same variables used for running 
 
 ## Post-training sampling, evaluation, and checkpoints
 
-<details><summary>Evaluation</summary>
+<details><summary>Evaluating Log-Likelihood</summary>
 
 You can use the following command to load a trained model and evaluate it on the test datasets:
 
@@ -302,6 +310,30 @@ as described in the paper. If you remove `--readjust_bn`, the sampling will proc
 (i.e., BN layers will use running mean and variances extracted during training).
 
 </details>
+
+<details><summary>Computing FID</summary>
+
+You can compute the FID score using 50K samples. To do so, you will need to create
+a mean and covariance statistics file on the training data using a command like:
+
+```shell script
+cd $CODE_DIR
+python scripts/precompute_fid_statistics.py --data $DATA_DIR/cifar10 --dataset cifar10 --fid_dir /tmp/fid-stats/
+```
+The command above computes the references statistics on the CIFAR-10 dataset and stores them in the `--fid_dir` durectory.
+Given the reference statistics file, we can run the following command to compute the FID score:
+
+```shell script
+cd $CODE_DIR
+python evaluate.py --checkpoint $CHECKPOINT_DIR/eval-$EXPR_ID/checkpoint.pt --data $DATA_DIR/cifar10 --eval_mode=evaluate_fid  --fid_dir /tmp/fid-stats/ --temp=0.6 --readjust_bn
+```
+where `--temp` sets the temperature used for sampling and `--readjust_bn` enables readjustment of the BN statistics
+as described in the paper. If you remove `--readjust_bn`, the sampling will proceed with BN layer in the eval mode 
+(i.e., BN layers will use running mean and variances extracted during training).
+Above, `$CHECKPOINT_DIR` and `$EXPR_ID` are the same variables used for running the main training script.
+Set `--data` to the same argument that was used when training NVAE (our example is for MNIST).
+
+</details> 
 
 <details><summary>Checkpoints</summary> 
 

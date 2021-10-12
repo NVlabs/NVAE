@@ -94,6 +94,10 @@ def create_exp_dir(path, scripts_to_save=None):
 
 class Logger(object):
     def __init__(self, rank, save):
+        # other libraries may set logging before arriving at this line.
+        # by reloading logging, we can get rid of previous configs set by other libraries.
+        from importlib import reload
+        reload(logging)
         self.rank = rank
         if self.rank == 0:
             log_format = '%(asctime)s %(message)s'
@@ -294,7 +298,7 @@ def one_hot(indices, depth, dim):
 
 
 def num_output(dataset):
-    if dataset == 'mnist':
+    if dataset in {'mnist', 'omniglot'}:
         return 28 * 28
     elif dataset == 'cifar10':
         return 3 * 32 * 32
@@ -308,7 +312,7 @@ def num_output(dataset):
 
 
 def get_input_size(dataset):
-    if dataset == 'mnist':
+    if dataset in {'mnist', 'omniglot'}:
         return 32
     elif dataset == 'cifar10':
         return 32
