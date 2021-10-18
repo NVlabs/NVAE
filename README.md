@@ -269,6 +269,11 @@ is stopped, kill your current run, and use the exact same commend with the addit
 to continue training from the last saved checkpoint.
 </details>
 
+<details><summary>NCCL Runtime Error</summary>
+
+CUDA on WSL currently does not support NCCL: https://github.com/NVIDIA/nccl/issues/442 If you are running on WSL, change backend to 'gloo' or 'mpi' here: https://github.com/NVlabs/NVAE/blob/38eb9977aa6859c6ee037af370071f104c592695/train.py#L280 
+</details>
+
 ## Monitoring the training progress
 While running any of the commands above, you can monitor the training progress using Tensorboard:
 
