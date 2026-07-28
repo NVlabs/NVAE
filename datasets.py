@@ -15,7 +15,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from scipy.io import loadmat
 import os
-import urllib
+import urllib.request
 from lmdb_datasets import LMDBDataset
 from thirdparty.lsun import LSUN
 
