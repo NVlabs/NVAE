@@ -67,6 +67,7 @@ class NormalDecoder:
 
     def sample(self, t=1.):
         x, _ = self.dist.sample()
+        x = self.dist.mu + (x - self.dist.mu) * t
         x = torch.clamp(x, -1, 1.)
         x = x / 2. + 0.5
         return x
