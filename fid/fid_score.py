@@ -130,7 +130,7 @@ def get_activations(files, model, batch_size=50, dims=2048, device='cpu', max_sa
     print('Starting to sample.')
     for batch in dl:
         # ignore labels
-        if isinstance(batch, list):
+        if isinstance(batch, (list, tuple)):
             batch = batch[0]
 
         batch = batch.to(device)
