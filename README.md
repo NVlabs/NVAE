@@ -240,7 +240,7 @@ the same time (with the batch size of 6). The smaller models obtain only 0.01 bp
 negative log-likelihood.
 </details>
 
-**If for any reason your training is stopped, use the exact same commend with the addition of `--cont_training`
+**If for any reason your training is stopped, use the exact same command with the addition of `--cont_training`
 to continue training from the last saved checkpoint. If you observe NaN, continuing the training using this flag
 usually will not fix the NaN issue.**
 
@@ -265,7 +265,7 @@ i) increase the spectral regularization coefficient, `--weight_decay_norm`. ii) 
 
 In some very rare cases, we observed that training freezes after 2-3 days of training. We believe the root cause
 of this is because of a racing condition that is happening in one of the low-level libraries. If for any reason the training 
-is stopped, kill your current run, and use the exact same commend with the addition of `--cont_training`
+is stopped, kill your current run, and use the exact same command with the addition of `--cont_training`
 to continue training from the last saved checkpoint.
 </details>
 
