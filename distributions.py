@@ -186,7 +186,7 @@ class DiscMixLogistic:
         # cells from logistic & clip to interval
         # we don't actually round to the nearest 8bit value when sampling
         u = torch.Tensor(means.size()).uniform_(1e-5, 1. - 1e-5).cuda()                        # B, 3, H, W
-        x = means + torch.exp(log_scales) / t * (torch.log(u) - torch.log(1. - u))             # B, 3, H, W
+        x = means + torch.exp(log_scales) * t * (torch.log(u) - torch.log(1. - u))             # B, 3, H, W
 
         x0 = torch.clamp(x[:, 0, :, :], -1, 1.)                                                # B, H, W
         x1 = torch.clamp(x[:, 1, :, :] + coeffs[:, 0, :, :] * x0, -1, 1)                       # B, H, W
